@@ -32,20 +32,7 @@ npm install
 4. 「Internal Integration Token」をコピー（これが `NOTION_API_KEY` になります）
 5. Notionのデータベースページを開き、右上の「…」→「接続」→作成した統合を選択
 
-### 3. NotionデータベースIDの取得
-
-データベースのURLから取得できます:
-```
-https://www.notion.so/{workspace}/{database_id}?v=...
-                                  ^^^^^^^^^^^^
-```
-
-既存のデータベースID（openapi.json参照）:
-- 開発DB: `2bcc6e2d528f8082b799e85588eb5479`
-- インフラDB: `2bdc6e2d528f8052a179d05803899197`
-- その他DB: `2bdc6e2d528f804684ecc8eb1c954537`
-
-### 4. Teams Webhook URLの取得
+### 3. Teams Webhook URLの取得
 
 1. Teamsで通知を受け取りたいチャネルを開く
 2. チャネル名の右にある「…」→「コネクタ」をクリック
@@ -53,7 +40,7 @@ https://www.notion.so/{workspace}/{database_id}?v=...
 4. 名前を入力して「作成」をクリック
 5. 表示されたURLをコピー
 
-### 5. 環境変数の設定
+### 4. 環境変数の設定
 
 #### ローカル開発用
 
