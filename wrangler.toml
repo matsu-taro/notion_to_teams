@@ -1,0 +1,28 @@
+name = "notion-to-teams-notifier"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# 月曜日9:00 JST (= 月曜日0:00 UTC) に実行
+[triggers]
+crons = ["0 0 * * 2"]
+
+# 環境変数は Cloudflare Dashboard または wrangler secret で設定
+# [vars]
+# NOTION_DATABASE_ID = "your-database-id"
+# TEAMS_WEBHOOK_URL = "your-teams-webhook-url"
+# NOTION_API_KEY はシークレットとして設定してください
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
