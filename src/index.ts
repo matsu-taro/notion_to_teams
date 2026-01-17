@@ -261,6 +261,150 @@ async function sendToTeams(env: Env, pages: NotionPage[]): Promise<void> {
 }
 
 /**
+ * データベースから全件取得してランダムに3件を選択
+ */
+async function fetchRandomPages(env: Env): Promise<NotionPage[]> {
+  const allPages: NotionPage[] = [];
+  let hasMore = true;
+  let startCursor: string | undefined;
+
+  // データベースから全件取得
+  while (hasMore) {
+    const body: any = {
+      page_size: 100,
+    };
+
+    if (startCursor) {
+      body.start_cursor = startCursor;
+    }
+
+    const response = await fetch(
+      `https://api.notion.com/v1/databases/${env.NOTION_DATABASE_ID_DAILY}/query`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.NOTION_API_KEY}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Notion API error: ${response.status} ${errorText}`);
+    }
+
+    const data: NotionQueryResponse = await response.json();
+    allPages.push(...data.results);
+
+    hasMore = data.has_more;
+    startCursor = data.next_cursor ?? undefined;
+  }
+
+  // ランダムに3件を選択
+  const shuffled = allPages.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, 3);
+}
+
+/**
+ * 日次ランダム通知をTeamsに送信
+ */
+async function sendDailyToTeams(env: Env, pages: NotionPage[]): Promise<void> {
+  const today = new Date().toLocaleDateString("ja-JP", { 
+    weekday: "long",
+    year: "numeric", 
+    month: "long", 
+    day: "numeric" 
+  });
+
+  // タイトルカードを作成
+  const titleCard = {
+    contentType: "application/vnd.microsoft.card.adaptive",
+    content: {
+      type: "AdaptiveCard",
+      version: "1.4",
+      body: [
+        {
+          type: "TextBlock",
+          text: `🛡️ 今日はこれだ！`,
+          size: "Large",
+          weight: "Bolder",
+          wrap: true
+        },
+        {
+          type: "TextBlock",
+          text: ``,
+          size: "Medium",
+          wrap: true,
+          spacing: "Small"
+        }
+      ]
+    }
+  };
+
+  // 記事カードを作成
+  const articleCards = pages.map((page, index) => {
+    const info = extractPageInfo(page);
+
+    return {
+      contentType: "application/vnd.microsoft.card.adaptive",
+      content: {
+        type: "AdaptiveCard",
+        version: "1.4",
+        body: [
+          {
+            type: "Container",
+            padding: "None",
+            items: [
+              {
+                type: "TextBlock",
+                text: `${index + 1}. ${info.title}`,
+                weight: "Bolder",
+                size: "Medium",
+                wrap: true,
+                spacing: "None"
+              }
+            ]
+          }
+        ],
+        actions: [
+          {
+            type: "Action.OpenUrl",
+            title: "☀️ Notionで開く",
+            url: info.url
+          }
+        ]
+      }
+    };
+  });
+
+  // タイトルカードを最初に、その後記事カードを追加
+  const attachments = [titleCard, ...articleCards];
+
+  const message = {
+    attachments: attachments,
+  };
+
+  console.log("Sending daily notification to Teams:", JSON.stringify(message, null, 2));
+
+  const response = await fetch(env.TEAMS_WEBHOOK_URL_DAILY, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(message),
+  });
+
+  const responseText = await response.text();
+  console.log("Teams response status:", response.status);
+  console.log("Teams response body:", responseText);
+
+  if (!response.ok && response.status !== 202) {
+    throw new Error(`Teams Webhook error: ${response.status} ${responseText}`);
+  }
+}
+
+/**
  * Cloudflare Workers Scheduled Event Handler
  */
 export default {
@@ -270,34 +414,69 @@ export default {
     ctx: ExecutionContext
   ): Promise<void> {
     try {
-      // Notionから先週の記事を取得
-      const pages = await fetchNotionPages(env);
-      console.log(`Found ${pages.length} pages from last week`);
+      // 実行時刻と曜日で週次通知か日次通知かを判定
+      const now = new Date();
+      const hour = now.getUTCHours();
+      const dayOfWeek = now.getUTCDay(); // 0=日曜, 1=月曜, ..., 6=土曜
 
-      // Teamsに通知
-      await sendToTeams(env, pages);
-      console.log("Successfully sent notification to Teams");
+      if (hour === 0) {
+        // 週次通知（火曜0:00 UTC = 月曜9:00 JST）
+        console.log("Running weekly notification...");
+        const pages = await fetchNotionPages(env);
+        console.log(`Found ${pages.length} pages from last week`);
+        await sendToTeams(env, pages);
+        console.log("Successfully sent weekly notification to Teams");
+      } else if (hour === 23 && dayOfWeek >= 0 && dayOfWeek <= 4) {
+        // 日次通知（日～木23:00 UTC = 月～金8:00 JST）
+        console.log("Running daily random notification...");
+        const pages = await fetchRandomPages(env);
+        console.log(`Selected ${pages.length} random pages`);
+        await sendDailyToTeams(env, pages);
+        console.log("Successfully sent daily notification to Teams");
+      } else {
+        console.log(`Scheduled run at ${hour}:00 UTC, day ${dayOfWeek} - no action needed`);
+      }
     } catch (error) {
       console.error("Error in scheduled task:", error);
       throw error;
     }
   },
 
-  // 手動テスト用のHTTPエンドポイント「/test」に送信
+  // 手動テスト用のHTTPエンドポイント
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/test") {
+    
+    // 週次通知のテスト
+    if (url.pathname === "/test-weekly") {
       try {
         const pages = await fetchNotionPages(env);
         await sendToTeams(env, pages);
   
         return new Response(
-          JSON.stringify({ success: true, pageCount: pages.length }),
+          JSON.stringify({ success: true, type: "weekly", pageCount: pages.length }),
           { headers: { "Content-Type": "application/json" } }
         );
       } catch (error: any) {
         return new Response(
-          JSON.stringify({ success: false, error: error.message }),
+          JSON.stringify({ success: false, type: "weekly", error: error.message }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+    
+    // 日次ランダム通知のテスト
+    if (url.pathname === "/test-daily") {
+      try {
+        const pages = await fetchRandomPages(env);
+        await sendDailyToTeams(env, pages);
+  
+        return new Response(
+          JSON.stringify({ success: true, type: "daily", pageCount: pages.length }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      } catch (error: any) {
+        return new Response(
+          JSON.stringify({ success: false, type: "daily", error: error.message }),
           { status: 500, headers: { "Content-Type": "application/json" } }
         );
       }
