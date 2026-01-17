@@ -2,9 +2,10 @@ name = "notion-to-teams-notifier"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# 月曜日9:00 JST (= 月曜日0:00 UTC) に実行
+# 週次通知: 毎週火曜日0:00 UTC (= 月曜日9:00 JST)
+# 日次通知: 毎日23:00 UTC (月～金曜日8:00 JSTに相当、handler内で曜日チェック)
 [triggers]
-crons = ["0 0 * * 2"]
+crons = ["0 0 * * 2", "0 23 * * *"]
 
 # 環境変数は Cloudflare Dashboard または wrangler secret で設定
 # [vars]

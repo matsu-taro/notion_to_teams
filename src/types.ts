@@ -4,6 +4,9 @@ export interface Env {
   NOTION_DATABASE_ID_INFRA: string;
   NOTION_DATABASE_ID_OTHER: string;
   TEAMS_WEBHOOK_URL: string;
+  // 日次ランダム通知用
+  NOTION_DATABASE_ID_DAILY: string;
+  TEAMS_WEBHOOK_URL_DAILY: string;
 }
 
 export interface NotionPage {
